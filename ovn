@@ -1,0 +1,9 @@
+sudo ovn-nbctl --db=tcp:127.0.0.1:6641 ls-add ovn-lab-net
+sudo ovn-sbctl --db=tcp:127.0.0.1:6642 lsp-add ovn-lab-net lsp1
+sudo ovs-vsctl --no-wait set Open_vSwitch . external_ids:ovn-remote=tcp:127.0.0.1:6642
+sudo ovs-vsctl --no-wait set Open_vSwitch . external_ids:ovn-nb=tcp:127.0.0.1:6641
+sudo ovs-vsctl --no-wait set Open_vSwitch . external_ids:ovn-encap-ip=10.0.2.15/24
+sudo ovs-vsctl --no-wait set Open_vSwitch . external_ids:ovn-encap-type=geneve
+
+
+ovn-controller.service: Referenced but unset environment variable evaluates to an empty string: OVN_CTL_OPTS

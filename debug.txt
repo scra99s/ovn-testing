@@ -1,0 +1,208 @@
+
+### Network Deployment script
+
+#!/bin/bash
+
+# The logical switch ports (LSP) used by the VMs can be defined as a normal string e.g. vm1-lsp, 
+# however, when using virsh to define the VMs interfaceID, the LSPs must be defined with a UUID,
+# so I am naming the LSPs with a UUID so virsh can reference them.
+VM1_LSP=d3bb254b-6473-48af-9c2f-ad645105d29d
+VM2_LSP=1f45bc55-ffec-4699-8a36-dc1bdf96e479
+
+# Create DHCP options for 2 router ports
+DHCP1=$(ovn-nbctl create dhcp_options cidr=10.0.1.0/24 options='{"server_id"="10.0.1.1", "server_mac"="02:00:00:00:01:01", "lease_time"="3600", "router"="10.0.1.1"}')
+DHCP2=$(ovn-nbctl create dhcp_options cidr=10.0.2.0/24 options='{"server_id"="10.0.2.1", "server_mac"="02:00:00:00:02:02", "lease_time"="3600", "router"="10.0.2.1"}')
+
+# Create logical router and configure 2 ports for connecting to the logical switches
+ovn-nbctl lr-add lr01
+ovn-nbctl lrp-add lr01 lr01-lrp01 02:00:00:00:01:01 10.0.1.1/24
+ovn-nbctl lrp-add lr01 lr01-lrp02 02:00:00:00:02:02 10.0.2.1/24
+
+# Create logical switch, configure router ports and vm ports.
+
+# scrapps-vm-01
+ovn-nbctl ls-add ls01
+ovn-nbctl lsp-add ls01 ls01-lr01
+ovn-nbctl lsp-set-type ls01-lr01 router
+ovn-nbctl lsp-set-addresses ls01-lr01 router
+ovn-nbctl lsp-set-options ls01-lr01 router-port=lr01-lrp01
+
+ovn-nbctl lsp-add ls01 $VM1_LSP
+ovn-nbctl lsp-set-addresses $VM1_LSP "dynamic"
+ovn-nbctl set Logical_Switch_Port $VM1_LSP dhcpv4_options=$DHCP1
+
+# scrapps-vm-02
+ovn-nbctl ls-add ls02
+ovn-nbctl lsp-add ls02 ls02-lr01
+ovn-nbctl lsp-set-type ls02-lr01 router
+ovn-nbctl lsp-set-addresses ls02-lr01 router
+ovn-nbctl lsp-set-options ls02-lr01 router-port=lr01-lrp02
+
+ovn-nbctl lsp-add ls02 $VM2_LSP
+ovn-nbctl lsp-set-addresses $VM2_LSP "dynamic"
+ovn-nbctl set Logical_Switch_Port $VM2_LSP dhcpv4_options=$DHCP2
+
+# Define and start the VMs
+virsh define scrapps-vm-01.xml
+virsh define scrapps-vm-02.xml
+
+virsh start scrapps-vm-01
+virsh start scrapps-vm-02
+
+### Virtual machine interface configurations
+
+## scrapps-vm-01
+
+<interface type='bridge'>
+    <source bridge='br-int'/>
+    <virtualport type='openvswitch'>
+    <parameters interfaceid='d3bb254b-6473-48af-9c2f-ad645105d29d'/>
+    </virtualport>
+    <model type='virtio'/>
+</interface>
+
+## scrapps-vm-02
+
+<interface type='bridge'>
+    <source bridge='br-int'/>
+    <virtualport type='openvswitch'>
+    <parameters interfaceid='1f45bc55-ffec-4699-8a36-dc1bdf96e479'/>
+    </virtualport>
+    <model type='virtio'/>
+</interface>
+
+### Output - nmcli --show
+
+enp0s3: connected to netplan-enp0s3
+        "Intel 82540EM"
+        ethernet (e1000), 08:00:27:66:5B:5F, hw, mtu 1500
+        ip4 default
+        inet4 10.0.2.15/24
+        route4 10.0.2.0/24 metric 100
+        route4 default via 10.0.2.2 metric 100
+        inet6 fd17:625c:f037:2:b78b:f871:55bf:7583/64
+        inet6 fd17:625c:f037:2:a00:27ff:fe66:5b5f/64
+        inet6 fe80::a00:27ff:fe66:5b5f/64
+        route6 fe80::/64 metric 256
+        route6 default via fe80::2 metric 1024
+        route6 fd17:625c:f037:2::/64 metric 256
+
+lo: connected (externally) to lo
+        "lo"
+        loopback (unknown), 00:00:00:00:00:00, sw, mtu 65536
+        inet4 127.0.0.1/8
+        inet6 ::1/128
+
+virbr0: connected (externally) to virbr0
+        "virbr0"
+        bridge, 52:54:00:7A:70:96, sw, mtu 1500
+        inet4 192.168.122.1/24
+        route4 192.168.122.0/24 metric 0
+
+vnet6: disconnected
+        "vnet6"
+        tun, FE:54:00:58:58:2F, sw, mtu 1500
+
+vnet7: disconnected
+        "vnet7"
+        tun, FE:54:00:8E:BF:59, sw, mtu 1500
+
+br-int: unmanaged
+        "br-int"
+        openvswitch, A2:86:76:69:51:94, sw, mtu 1500
+
+ovs-system: unmanaged
+        "ovs-system"
+        openvswitch, FA:F2:E0:19:9B:50, sw, mtu 1500
+
+### Output - ovs-vsctl show
+
+9a0f63f0-1e6f-4a34-8f93-d8c50aee0938
+    Bridge br-int
+        fail_mode: secure
+        datapath_type: system
+        Port vnet7
+            Interface vnet7
+        Port vnet6
+            Interface vnet6
+        Port br-int
+            Interface br-int
+                type: internal
+    ovs_version: "3.3.0"
+
+### Output - ovn-nbctl show
+switch 7b9017dc-49e2-45fd-b072-a084f0d1cdc5 (ls02)
+    port 1f45bc55-ffec-4699-8a36-dc1bdf96e479
+        addresses: ["dynamic"]
+    port ls02-lr01
+        type: router
+        router-port: lr01-lrp02
+switch e7967982-c5b1-403d-8f5e-838a6cbeea53 (ls01)
+    port d3bb254b-6473-48af-9c2f-ad645105d29d
+        addresses: ["dynamic"]
+    port ls01-lr01
+        type: router
+        router-port: lr01-lrp01
+router d5631161-6b2c-4ced-a8f4-b5ca05f7afff (lr01)
+    port lr01-lrp02
+        mac: "02:00:00:00:02:02"
+        networks: ["10.0.2.1/24"]
+    port lr01-lrp01
+        mac: "02:00:00:00:01:01"
+        networks: ["10.0.1.1/24"]
+
+### output - ovn-nbctl list dhcp_options
+_uuid               : def02c36-83a7-4792-b003-9dd15e52146f
+cidr                : "10.0.1.0/24"
+external_ids        : {}
+options             : {lease_time="3600", router="10.0.1.1", server_id="10.0.1.1", server_mac="02:00:00:00:01:01"}
+
+_uuid               : 84e42667-cdfc-4f42-98b0-de2a2e84e756
+cidr                : "10.0.2.0/24"
+external_ids        : {}
+options             : {lease_time="3600", router="10.0.2.1", server_id="10.0.2.1", server_mac="02:00:00:00:02:02"}
+
+### Output - ovs-vsctl list-ports br-int
+vnet6
+vnet7
+
+
+### Main services status
+
+systemctl status openvswitch-switch.service
+openvswitch-switch.service - Open vSwitch
+     Loaded: loaded (/usr/lib/systemd/system/openvswitch-switch.service; enabled; preset: enabled)
+     Active: active (exited) since Mon 2025-06-09 06:40:32 UTC; 1h 14min ago
+   Main PID: 1068 (code=exited, status=0/SUCCESS)
+        CPU: 3ms
+
+systemctl status ovn-controller.service 
+ovn-controller.service - Open Virtual Network host control daemon
+     Loaded: loaded (/usr/lib/systemd/system/ovn-controller.service; static)
+     Active: active (running) since Mon 2025-06-09 06:40:32 UTC; 1h 14min ago
+    Process: 1501 ExecStart=/usr/share/ovn/scripts/ovn-ctl start_controller --ovn-manage-ovsdb=no --no-monitor $OVN_CTL_OPTS (code=exited, status=0/SUCCESS)
+   Main PID: 1617 (ovn-controller)
+      Tasks: 5 (limit: 19090)
+     Memory: 3.8M (peak: 4.1M)
+        CPU: 131ms
+     CGroup: /system.slice/ovn-controller.service
+
+systemctl status ovn-northd.service
+ovn-northd.service - Open Virtual Network central control daemon
+     Loaded: loaded (/usr/lib/systemd/system/ovn-northd.service; static)
+     Active: active (running) since Mon 2025-06-09 06:40:32 UTC; 1h 15min ago
+    Process: 1512 ExecStart=/usr/share/ovn/scripts/ovn-ctl start_northd --ovn-manage-ovsdb=no --no-monitor $OVN_CTL_OPTS (code=exited, status=0/SUCCESS)
+   Main PID: 1662 (ovn-northd)
+      Tasks: 3 (limit: 19090)
+     Memory: 3.9M (peak: 4.4M)
+        CPU: 109ms
+     CGroup: /system.slice/ovn-northd.service
+
+### vnet interfaces
+ovs-vsctl get interface vnet6 external_ids
+{attached-mac="52:54:00:58:58:2f", iface-id="d3bb254b-6473-48af-9c2f-ad645105d29d", iface-status=active, vm-id="c90be7a0-56f1-44d4-89db-129056d7033b"}
+
+ovs-vsctl get interface vnet7 external_ids
+{attached-mac="52:54:00:8e:bf:59", iface-id="1f45bc55-ffec-4699-8a36-dc1bdf96e479", iface-status=active, vm-id="8dfbb136-8c4e-402a-a628-c3fb5991070c"}
+
+ovn-controller.service: Referenced but unset environment variable evaluates to an empty string: OVN_CTL_OPTS
