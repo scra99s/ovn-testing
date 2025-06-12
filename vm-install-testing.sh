@@ -5,9 +5,9 @@ virt-install \
   --vcpus 1 \
   --cpu qemu64 \
   --disk size=1,format=qcow2,bus=virtio \
-  --cdrom /opt/alpine-virt-3.21.3-x86_64.iso \
+  --cdrom /opt/alpine-virt-3.22.0-x86_64.iso \
   --graphics vnc,listen=0.0.0.0,password=pass \
-  --os-variant alpinelinux3.21 \
+  --os-variant alpinelinux3.17 \
   --boot cdrom,hd,menu=on
 
 # Installing Alpine Linux in a VM using virt-install

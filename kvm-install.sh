@@ -22,8 +22,9 @@ adduser scrapps libvirt
 #   external_ids:ovn-remote=unix:/run/ovn/ovnsb_db.sock \
 #   external_ids:ovn-encap-type=geneve \
 #   external_ids:ovn-encap-ip=127.0.0.1
-# ovs-vsctl set open_vswitch . \
-#   external_ids:ovn-remote=ptcp:6641 \
-#   external_ids:ovn-remote=ptcp:6642 \
-#   external_ids:ovn-encap-type=geneve \
-#   external_ids:ovn-encap-ip=172.0.0.1
+
+ovs-vsctl set open_vswitch . \
+  external_ids:ovn-remote=ptcp:6641 \
+  external_ids:ovn-remote=ptcp:6642 \
+  external_ids:ovn-encap-type=geneve \
+  external_ids:ovn-encap-ip=127.0.0.1

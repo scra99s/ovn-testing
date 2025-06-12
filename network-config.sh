@@ -44,10 +44,10 @@ ovn-nbctl lsp-set-addresses $VM2_LSP "$(genUniqMac scrapps-vm-02)"
 ovn-nbctl set Logical_Switch_Port $VM2_LSP dhcpv4_options=$DHCP2
 
 # Deine and start the VMs
-# virsh define scrapps-vm-01.xml
-# virsh define scrapps-vm-02.xml
+virsh define scrapps-vm-01.xml
+virsh define scrapps-vm-02.xml
 
-# virsh start scrapps-vm-01
-# virsh start scrapps-vm-02
+virsh start scrapps-vm-01
+virsh start scrapps-vm-02
 
 # bash define-vms.sh
